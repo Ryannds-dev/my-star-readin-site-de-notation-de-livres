@@ -63,13 +63,9 @@ exports.deleteBook = (req, res) => {
         res.status(401).json({ message: "Not authorized" });
       } else {
         const filename = book.imageUrl.split("/images/")[1];
-        fs.unlink(`images/${filename}`, (err) => {
-          if (err) {
-            console.error("unlink failed:", err);
-            // au choix: return res.status(500).json({ err });
-          }
+        fs.unlink(`images/${filename}`, () => {
           Book.deleteOne({ _id: req.params.id })
-            .then(() => res.status(200).json({ message: "Objet supprimé !" }))
+            .then(() => res.status(200).json({ message: "Livre supprimé !" }))
             .catch((error) => res.status(401).json({ error }));
         });
       }
