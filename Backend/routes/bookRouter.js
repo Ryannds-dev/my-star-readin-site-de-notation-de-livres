@@ -2,11 +2,12 @@ const express = require("express");
 const auth = require("../middleware/auth");
 const router = express.Router();
 const multer = require("../middleware/multer-config");
+const sharp = require("../middleware/sharp-config");
 
 const bookController = require("../controllers/bookController");
 
 //CREATE - Créer un livre
-router.post("/", auth, multer, bookController.createBook);
+router.post("/", auth, multer, sharp, bookController.createBook);
 
 // READ - Récupérer tous les livres
 router.get("/", bookController.getAllBooks);
@@ -18,7 +19,7 @@ router.get("/bestrating", bookController.getBestRatedBooks);
 router.get("/:id", bookController.getOneBook);
 
 // UPDATE - modifier un livre
-router.put("/:id", auth, multer, bookController.modifyBook);
+router.put("/:id", auth, multer, sharp, bookController.modifyBook);
 
 // DELETE - supprimer un livre
 router.delete("/:id", auth, bookController.deleteBook);

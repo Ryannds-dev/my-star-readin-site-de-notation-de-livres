@@ -42,6 +42,13 @@ exports.modifyBook = (req, res) => {
       if (book.userId != req.auth.userId) {
         res.status(401).json({ message: "Not authorized" });
       } else {
+        // AJOUT FINAL CAR OUBLI DE SUPPRESSION ANCIENNE IMAGE QUAND MODIFICATION
+        if (req.file) {
+          const filename = book.imageUrl.split("/images/")[1];
+          fs.unlink(`images/${filename}`, () => {});
+        }
+        // FIN
+
         Book.updateOne(
           { _id: req.params.id },
           { ...bookObject, _id: req.params.id }
