@@ -122,6 +122,14 @@ exports.rateBook = (req, res) => {
       // ajouter la note
       book.ratings.push({ userId, grade });
 
+      // faire une moyenne des notes de ce livre
+      let sum = 0;
+      for (let i = 0; i < book.ratings.length; i++) {
+        sum += book.ratings[i].grade;
+      }
+
+      book.averageRating = Math.round((sum / book.ratings.length) * 10) / 10;
+
       return book.save();
     })
     .then((updatedBook) => {
