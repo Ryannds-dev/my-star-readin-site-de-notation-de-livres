@@ -21,6 +21,10 @@ exports.createBook = (req, res) => {
       res.status(201).json({ message: "Livre enregistré !" });
     })
     .catch((error) => {
+      // CORRECTION D'APRES SOUTENANCE POUR SUPPRIMER L'IMAGE UPLOADEE EN CAS D'ERREUR
+      if (req.file) {
+        fs.unlink(`images/${req.file.filename}`, () => {});
+      }
       res.status(400).json({ error });
     });
 };
@@ -40,21 +44,33 @@ exports.modifyBook = (req, res) => {
   Book.findOne({ _id: req.params.id })
     .then((book) => {
       if (book.userId != req.auth.userId) {
-        res.status(403).json({ message: "Unauthorized request" });
-      } else {
-        // AJOUT FINAL CAR OUBLI DE SUPPRESSION ANCIENNE IMAGE QUAND MODIFICATION
+        // CORRECTION D'APRES SOUTENANCE POUR SUPPRIMER L'IMAGE UPLOADEE SI NON AUTORISE
         if (req.file) {
-          const filename = book.imageUrl.split("/images/")[1];
-          fs.unlink(`images/${filename}`, () => {});
+          fs.unlink(`images/${req.file.filename}`, () => {});
         }
-        // FIN
-
+        return res.status(403).json({ message: "Unauthorized request" });
+      } else {
         Book.updateOne(
           { _id: req.params.id },
-          { ...bookObject, _id: req.params.id }
+          { ...bookObject, _id: req.params.id },
+          //CORRECTION D'APRES SOUTENANCE POUR ETRE SUR D'AVOIR LES CHAMPS TEXTUELS REMPLIS POUR UNE UPDATE
+          { runValidators: true }
         )
-          .then(() => res.status(200).json({ message: "Livre modifié!" }))
-          .catch((error) => res.status(401).json({ error }));
+          .then(() => {
+            //CORRECTION D'APRES SOUTENANCE TOUJOURS ATTENDRE LA REUSSITE DE LA MODIF POUR SUPPRIMER ANCIENNE IMG
+            if (req.file) {
+              const oldFilename = book.imageUrl.split("/images/")[1];
+              fs.unlink(`images/${oldFilename}`, () => {});
+            }
+            res.status(200).json({ message: "Livre modifié!" });
+          })
+          //CORRECTION D'APRES SOUTENANCE SI L'UPLOAD ECHOUE LA NOUVELLE IMG EST SUPPRIMEE
+          .catch((error) => {
+            if (req.file) {
+              fs.unlink(`images/${req.file.filename}`, () => {});
+            }
+            res.status(400).json({ error });
+          });
       }
     })
     .catch((error) => {

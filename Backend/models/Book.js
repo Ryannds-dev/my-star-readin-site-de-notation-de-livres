@@ -8,13 +8,12 @@ const ratingSchema = new mongoose.Schema({
 const bookSchema = new mongoose.Schema({
   userId: { type: String, required: true },
 
-  title: { type: String, required: true },
-  author: { type: String, required: true },
+  title: { type: String, required: [true, "Titre manquant"], trim: true },
+  author: { type: String, required: [true, "Auteur manquant"], trim: true },
+  imageUrl: { type: String, required: [true, "Image manquante"] },
 
-  imageUrl: { type: String, required: true },
-
-  year: { type: Number, required: true },
-  genre: { type: String, required: true },
+  year: { type: Number, required: [true, "Année manquante"], trim: true },
+  genre: { type: String, required: [true, "Genre manquant"], trim: true },
 
   ratings: [ratingSchema],
 
