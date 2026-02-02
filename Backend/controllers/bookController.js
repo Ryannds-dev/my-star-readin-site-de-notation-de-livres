@@ -1,101 +1,116 @@
 const Book = require("../models/Book");
-const fs = require("fs");
+
+const cloudinary = require("../middleware/cloudinary-config");
+const uploadToCloudinary = require("../utils/cloudinaryUpload");
 
 //CREATE - Créer un livre
-exports.createBook = (req, res) => {
-  const bookObject = JSON.parse(req.body.book);
-  delete bookObject._id;
-  delete bookObject._userId;
+exports.createBook = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "Image manquante" });
+    if (!req.body.book)
+      return res
+        .status(400)
+        .json({ message: "Livre manquant (req.body.book)" });
 
-  const book = new Book({
-    ...bookObject,
-    userId: req.auth.userId,
-    imageUrl: `${req.protocol}://${req.get("host")}/images/${
-      req.file.filename
-    }`,
-  });
+    let bookObject;
+    try {
+      bookObject = JSON.parse(req.body.book);
+    } catch (e) {
+      return res.status(400).json({ message: "Format du livre invalide" });
+    }
 
-  book
-    .save()
-    .then(() => {
-      res.status(201).json({ message: "Livre enregistré !" });
-    })
-    .catch((error) => {
-      // CORRECTION D'APRES SOUTENANCE POUR SUPPRIMER L'IMAGE UPLOADEE EN CAS D'ERREUR
-      if (req.file) {
-        fs.unlink(`images/${req.file.filename}`, () => {});
-      }
-      res.status(400).json({ error });
+    delete bookObject._id;
+    delete bookObject._userId;
+
+    const uploaded = await uploadToCloudinary(req.file.buffer);
+
+    const book = new Book({
+      ...bookObject,
+      userId: req.auth.userId,
+      imageUrl: uploaded.secure_url,
+      imagePublicId: uploaded.public_id,
     });
+
+    await book.save();
+
+    res.status(201).json({ message: "Livre enregistré !" });
+  } catch (error) {
+    console.log("CREATE BOOK ERROR =>", error);
+
+    if (error && error.errors) {
+      return res.status(400).json({ error }); // mongoose errors détaillées
+    }
+
+    return res.status(400).json({ message: error.message });
+  }
 };
 
 // UPDATE - modifier un livre
-exports.modifyBook = (req, res) => {
-  const bookObject = req.file
-    ? {
-        ...JSON.parse(req.body.book),
-        imageUrl: `${req.protocol}://${req.get("host")}/images/${
-          req.file.filename
-        }`,
-      }
-    : { ...req.body };
+exports.modifyBook = async (req, res) => {
+  try {
+    const book = await Book.findOne({ _id: req.params.id });
+    if (!book) return res.sendStatus(404);
 
-  delete bookObject._userId;
-  Book.findOne({ _id: req.params.id })
-    .then((book) => {
-      if (book.userId != req.auth.userId) {
-        // CORRECTION D'APRES SOUTENANCE POUR SUPPRIMER L'IMAGE UPLOADEE SI NON AUTORISE
-        if (req.file) {
-          fs.unlink(`images/${req.file.filename}`, () => {});
-        }
-        return res.status(403).json({ message: "Unauthorized request" });
-      } else {
-        Book.updateOne(
-          { _id: req.params.id },
-          { ...bookObject, _id: req.params.id },
-          //CORRECTION D'APRES SOUTENANCE POUR ETRE SUR D'AVOIR LES CHAMPS TEXTUELS REMPLIS POUR UNE UPDATE
-          { runValidators: true }
-        )
-          .then(() => {
-            //CORRECTION D'APRES SOUTENANCE TOUJOURS ATTENDRE LA REUSSITE DE LA MODIF POUR SUPPRIMER ANCIENNE IMG
-            if (req.file) {
-              const oldFilename = book.imageUrl.split("/images/")[1];
-              fs.unlink(`images/${oldFilename}`, () => {});
-            }
-            res.status(200).json({ message: "Livre modifié!" });
-          })
-          //CORRECTION D'APRES SOUTENANCE SI L'UPLOAD ECHOUE LA NOUVELLE IMG EST SUPPRIMEE
-          .catch((error) => {
-            if (req.file) {
-              fs.unlink(`images/${req.file.filename}`, () => {});
-            }
-            res.status(400).json({ error });
-          });
-      }
-    })
-    .catch((error) => {
-      res.status(400).json({ error });
-    });
+    if (book.userId != req.auth.userId) {
+      return res.status(403).json({ message: "Unauthorized request" });
+    }
+
+    let bookObject = req.file
+      ? { ...JSON.parse(req.body.book) }
+      : { ...req.body };
+
+    delete bookObject._userId;
+
+    // si nouvelle image : upload cloudinary et on prépare les nouveaux champs
+    let oldPublicId = null;
+
+    if (req.file) {
+      const uploaded = await uploadToCloudinary(req.file.buffer);
+
+      bookObject.imageUrl = uploaded.secure_url;
+      bookObject.imagePublicId = uploaded.public_id;
+
+      // on garde l'ancien publicId pour le supprimer après update réussi
+      oldPublicId = book.imagePublicId;
+    }
+
+    await Book.updateOne(
+      { _id: req.params.id },
+      { ...bookObject, _id: req.params.id },
+      { runValidators: true },
+    );
+
+    // suppression de l'ancienne image seulement après update OK
+    if (oldPublicId) {
+      await cloudinary.uploader.destroy(oldPublicId);
+    }
+
+    res.status(200).json({ message: "Livre modifié!" });
+  } catch (error) {
+    res.status(400).json({ error });
+  }
 };
 
 // DELETE - supprimer un livre
-exports.deleteBook = (req, res) => {
-  Book.findOne({ _id: req.params.id })
-    .then((book) => {
-      if (book.userId != req.auth.userId) {
-        res.status(403).json({ message: "Unauthorized request" });
-      } else {
-        const filename = book.imageUrl.split("/images/")[1];
-        fs.unlink(`images/${filename}`, () => {
-          Book.deleteOne({ _id: req.params.id })
-            .then(() => res.status(200).json({ message: "Livre supprimé !" }))
-            .catch((error) => res.status(401).json({ error }));
-        });
-      }
-    })
-    .catch((error) => {
-      res.status(500).json({ error });
-    });
+exports.deleteBook = async (req, res) => {
+  try {
+    const book = await Book.findOne({ _id: req.params.id });
+    if (!book) return res.sendStatus(404);
+
+    if (book.userId != req.auth.userId) {
+      return res.status(403).json({ message: "Unauthorized request" });
+    }
+
+    // supprimer l'image cloudinary
+    await cloudinary.uploader.destroy(book.imagePublicId);
+
+    // supprimer le livre
+    await Book.deleteOne({ _id: req.params.id });
+
+    res.status(200).json({ message: "Livre supprimé !" });
+  } catch (error) {
+    res.status(500).json({ error });
+  }
 };
 
 // READ - Récupérer un livre par id
@@ -133,7 +148,7 @@ exports.rateBook = (req, res) => {
 
       // empêcher une double notation (en trichant pour passer le frontend)
       const alreadyRated = book.ratings.find(
-        (rating) => rating.userId === userId
+        (rating) => rating.userId === userId,
       );
 
       if (alreadyRated) {

@@ -13,19 +13,19 @@ module.exports = async (req, res, next) => {
     const filename = name + "_" + Date.now() + ".webp";
 
     // conversion en webp et largeur fixée à 500px (si trop grande) de l'image stockée en mémoire par multer
-    await sharp(req.file.buffer)
+    req.file.buffer = await sharp(req.file.buffer)
       .resize({
         width: 500,
         withoutEnlargement: true,
       })
       .webp()
-      .toFile(`images/${filename}`);
+      .toBuffer();
 
     // on met à jour req.file
     req.file.filename = filename;
 
     next();
   } catch (error) {
-    res.status(500).json({ error });
+    res.status(500).json({ message: error.message });
   }
 };

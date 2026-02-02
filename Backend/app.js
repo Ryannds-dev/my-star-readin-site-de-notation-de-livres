@@ -3,11 +3,10 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 
 const path = require("path");
+require("dotenv").config();
 
 const bookRoutes = require("./routes/bookRouter");
 const userRoutes = require("./routes/userRouter");
-
-require("dotenv").config();
 
 const app = express();
 
